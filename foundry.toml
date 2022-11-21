@@ -7,3 +7,4 @@ libs = ['lib']
 
 [rpc_endpoints]
 mainnet = "https://rpc.ankr.com/eth"
+bsc = "https://rpc.ankr.com/bsc"
